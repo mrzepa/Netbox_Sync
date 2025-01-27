@@ -15,6 +15,8 @@ import ipaddress
 import warnings
 import concurrent.futures
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -247,7 +249,7 @@ def firewall_sync(panorama_ip, pano_api_key):
     firewall_list = pano.get_firewall_connected()
 
     # Run the firewall processing loop in parallel
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
         futures = [
             executor.submit(process_firewall, item, pano_api_key, nb, firewall_data, logger, netbox_data, tenant)
             for item in firewall_list
@@ -491,6 +493,7 @@ def setup_logging(min_log_level=logging.INFO):
 if __name__ == '__main__':
     load_dotenv()
     setup_logging(logging.INFO)
+    MAX_THREADS = 8
     yaml_filenames = ["netbox.yaml", "firewalls.yaml"]
     config_data = load_yaml_files(os.getenv('INPUT_DIR'), yaml_filenames)
     netbox_data = config_data.get("netbox.yaml")
@@ -513,7 +516,6 @@ if __name__ == '__main__':
     # Netbox
     nb = pynetbox.api(netbox_data.get('url'), token=os.getenv('NETBOX_TOKEN'), threading=True)
     nb.http_session.verify = False
-
     tenant = nb.tenancy.tenants.get(name=netbox_data['tenant'])
     if not tenant:
         logger.critical(f'No tenant found with name {netbox_data["tenant"]}, please create it in Netbox.')
@@ -523,6 +525,6 @@ if __name__ == '__main__':
         logger.critical(f'No VRF found with name {netbox_data["vrf"]}, please create it in Netbox.')
         raise SystemExit(1)
 
-    aruba_ap_sync(ac)
-    aruba_switch_sync(ac)
+    # aruba_ap_sync(ac)
+    # aruba_switch_sync(ac)
     firewall_sync(panorama_ip, pano_api_key)
