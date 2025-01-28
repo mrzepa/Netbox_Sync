@@ -314,6 +314,10 @@ def sync_ac(path: str, device: str, role: str):
             if device == 'switches':
                 if item['stack_id']:
                     name = f'{name} - stack member {item["serial"]}'
+            nb_site = nb.dcim.sites.get(name=site)
+            if not nb_site:
+                logger.warning(f'Site "{site}" not found in Netbox, skipping...')
+                continue
             try:
                 nb_device = nb.dcim.devices.get(serial=serial)
             except ValueError as e:
@@ -344,10 +348,6 @@ def sync_ac(path: str, device: str, role: str):
                 if not device_role:
                     logger.warning(f'Device role "{role}" not found in Netbox, skipping...')
                     continue
-                nb_site = nb.dcim.sites.get(name=site)
-                if not nb_site:
-                    logger.warning(f'Site "{site}" not found in Netbox, skipping...')
-                    continue
                 try:
                     nb_device = nb.dcim.devices.create(name=name,
                                                        device_type=device_type.id,
@@ -363,14 +363,22 @@ def sync_ac(path: str, device: str, role: str):
                 except pynetbox.core.query.RequestError as e:
                     logger.exception(f'Could not add device {name} to Netbox: {e}')
             else:
-                # the device exists in netbox, lets see if it's name has changed
+                # the device exists in netbox, lets see if it's name or site has changed
                 if nb_device.name != name:
-                    logger.info(
-                        f'Device with serial number {serial} and name {name} already exists in Netbox with name {nb_device.name}. Updating name..., ')
                     nb_device.name = name
-                    nb_device.save()
                     logger.info(
                         f'Device with serial number {serial} and name {name} updated in Netbox with ID {nb_device.id} with name {nb_device.name}.')
+
+                if nb_device.site.id != nb_site.id:
+                    nb_device.site = nb_site.id
+                    nb_device.location = None
+                    logger.info(f'Device with serial number {serial} and name {name} updated in Netbox to site {nb_site}.')
+                try:
+                    nb_device.save()
+                except pynetbox.core.query.RequestError as e:
+                    logger.exception(f'Could not update device {name} in Netbox: {e}')
+                    continue
+
 
 def aruba_switch_sync(ac):
     """
@@ -525,6 +533,6 @@ if __name__ == '__main__':
         logger.critical(f'No VRF found with name {netbox_data["vrf"]}, please create it in Netbox.')
         raise SystemExit(1)
 
-    # aruba_ap_sync(ac)
-    # aruba_switch_sync(ac)
+    aruba_ap_sync(ac)
+    aruba_switch_sync(ac)
     firewall_sync(panorama_ip, pano_api_key)
