@@ -4,4 +4,4 @@ requests~=2.31.0
 pycentral~=1.4.1
 python-dotenv~=1.0.1
 icecream~=2.1.4
-git+https://github.com/mrzepa/pypanrestv2.git
+pypanrestv2
